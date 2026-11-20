@@ -1,0 +1,7 @@
+services:
+  student-manager:
+    build: .
+    container_name: student-manager
+    ports:
+      - "8080:80"
+    restart: unless-stopped
