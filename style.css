@@ -43,6 +43,8 @@ td small{display:block;color:var(--muted)}
 .row-actions{display:flex;gap:.4rem;justify-content:flex-end}
 .row-actions button{padding:.3rem .6rem;font-size:.85rem}
 .empty{padding:2rem;text-align:center;color:var(--muted);margin:0}
+.database-status{margin:0 0 .75rem;color:var(--good);font-size:.9rem}
+.database-status.error{color:var(--danger)}
 @media (max-width:860px){
   .layout{grid-template-columns:1fr}
   .panel{position:static}

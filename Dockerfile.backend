@@ -1,0 +1,6 @@
+FROM python:3.13-alpine
+WORKDIR /app
+COPY server.py .
+ENV STUDENT_DB_PATH=/data/students.sqlite3
+EXPOSE 8000
+CMD ["python", "-u", "server.py"]

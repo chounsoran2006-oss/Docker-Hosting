@@ -1,19 +1,46 @@
 (() => {
   const KEY = "students.v1";
   const $ = id => document.getElementById(id);
-  let students = load();
+  let students = [];
 
-  function load() {
-    try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+  async function request(path, options) {
+    const response = await fetch(path, options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "The request failed.");
+    return data;
   }
-  function save() { localStorage.setItem(KEY, JSON.stringify(students)); }
-  function nextId() {
-    const n = students.reduce((m, s) => Math.max(m, parseInt(s.id.slice(1), 10) || 0), 0) + 1;
-    return "S" + String(n).padStart(4, "0");
-  }
+
   function esc(t) {
     return String(t ?? "").replace(/[&<>"']/g, c =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  async function migrateLegacyStudents() {
+    const stored = localStorage.getItem(KEY);
+    if (!stored) return;
+    const legacy = JSON.parse(stored);
+    if (!Array.isArray(legacy)) throw new Error("Saved browser data could not be migrated.");
+    if (legacy.length) {
+      await request("/api/students/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(legacy)
+      });
+    }
+    localStorage.removeItem(KEY);
+  }
+
+  async function loadStudents() {
+    students = await request("/api/students");
+    render();
+    $("databaseStatus").textContent = `Connected to database · ${students.length} student${students.length === 1 ? "" : "s"} saved`;
+    $("databaseStatus").classList.remove("error");
+  }
+
+  function showError(message) {
+    $("error").textContent = message;
+    $("databaseStatus").textContent = message;
+    $("databaseStatus").classList.add("error");
   }
 
   // Fill class filter from the form's options
@@ -63,7 +90,7 @@
     $("error").textContent = "";
   }
 
-  $("studentForm").addEventListener("submit", e => {
+  $("studentForm").addEventListener("submit", async e => {
     e.preventDefault();
     const name = $("name").value.trim();
     const score = Number($("score").value);
@@ -79,16 +106,24 @@
       gender: $("gender").value, grade: $("grade").value, phone: $("phone").value.trim()
     };
     const id = $("editId").value;
-    if (id) students = students.map(s => (s.id === id ? { ...s, ...data } : s));
-    else students.push({ id: nextId(), ...data });
-    save(); resetForm(); render();
+    try {
+      await request(id ? `/api/students/${encodeURIComponent(id)}` : "/api/students", {
+        method: id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+      await loadStudents();
+      resetForm();
+    } catch (error) {
+      showError(error.message);
+    }
   });
 
   $("cancelBtn").addEventListener("click", resetForm);
   $("search").addEventListener("input", render);
   $("filterGrade").addEventListener("change", render);
 
-  $("rows").addEventListener("click", e => {
+  $("rows").addEventListener("click", async e => {
     const edit = e.target.dataset.edit, del = e.target.dataset.del;
     if (edit) {
       const s = students.find(x => x.id === edit);
@@ -103,8 +138,12 @@
     if (del) {
       const s = students.find(x => x.id === del);
       if (confirm(`Delete ${s.name}? This cannot be undone.`)) {
-        students = students.filter(x => x.id !== del);
-        save(); render();
+        try {
+          await request(`/api/students/${encodeURIComponent(del)}`, { method: "DELETE" });
+          await loadStudents();
+        } catch (error) {
+          showError(error.message);
+        }
       }
     }
   });
@@ -122,5 +161,13 @@
     URL.revokeObjectURL(a.href);
   });
 
-  render();
+  (async () => {
+    $("databaseStatus").textContent = "Connecting to database…";
+    try {
+      await migrateLegacyStudents();
+      await loadStudents();
+    } catch (error) {
+      showError(error.message);
+    }
+  })();
 })();
